@@ -1,0 +1,279 @@
+---
+title: "EDA_CAPSTONE"
+author: "Bodie Franklin"
+date: "7/5/2021"
+output: html_document
+---
+EDA of ERCOT data. The data was compiled from ERCOT data Archives. Time period is 2010-2021.
+
+
+
+``````{r message=FALSE}
+#Getting Rid of Warning Messages
+defaultW <- getOption("warn")
+options(warn = -1)
+
+library(tidyverse)
+library(ggcorrplot)
+library(naniar)
+library(reshape2)
+
+#Reading in the File
+df <- read.csv(file="C:/users/bodie/Documents/CAPSTONE_DATA.csv")
+
+#Change Day format 
+df$DAY <- as.Date(df$DAY,format="%m/%d/%Y")
+
+```
+## Checking NA Values
+
+Due to flow of document, I moved this to the end. We have a lot of missing Na values and output was tiresome.
+Analysis of Na's can be found at the end.
+
+
+## Exploring Daily MWH
+
+```{r,fig.width = 12}
+
+#Subsetting data in order to use gather function
+LOAD_DF <-df %>% select('DAY','COAST_LOAD','EAST_LOAD','FAR_WEST_LOAD','NORTH_LOAD',
+                        'NORTH_CENTRAL_LOAD','SOUTHERN_LOAD','SOUTH_CENTRAL_LOAD','WEST_LOAD')
+
+#Data Wrangling
+LOAD_DF <- LOAD_DF %>% gather("LOAD_ZONE","MWH",2:9)
+
+
+LOAD_DF %>% ggplot(aes(x=DAY,y=MWH,color=LOAD_ZONE))+geom_line()+xlab("DATE") +
+  ylab("MWH")+ggtitle("Daily MWH Demand")+theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.key.size = unit(1.0, 'cm'))
+
+
+```
+Regardless of the location in TX, each load zone is following a cyclical nature. Intuition tells us that this makes sense
+since the MWH generated is a response due to weather cycles. Perhaps we will gain more insights by individually
+plotting the load zones.
+
+
+
+
+```{r,fig.width = 10}
+#Breaking the graph out by Zone
+LOAD_DF %>% ggplot(aes(x=DAY,y=MWH,color=LOAD_ZONE))+geom_line()+xlab("DATE") +
+  ylab("MWH")+ggtitle("Daily MWH Demand By Zone")+theme(plot.title = element_text(hjust = 0.5))+
+  facet_wrap(~LOAD_ZONE,ncol=2)
+```
+
+The break out of the individual load zones provides insights to population density. It seems that EAST, FAR_WEST, NORTH, SOUTHERN
+and WEST load zones are generating significantly lower Daily MWH than COAST, NORTH_CENTRAL, SOUTH_Central. Perhaps, these
+Load zones are less populated and thus have lower Energy demand requirements. 
+
+It is interesting that all the Load Zones with the exception of FAR_WEST are following a cyclical nature. Visually, we aren't
+seeing any impact of population growth over a 10 year period for the Load Zones. One would think that we would see some type of
+upward trend in the graphs.
+
+## Correlation plot
+```{r,fig.width = 8}
+
+corr_df <- df %>% select('COAST_LOAD','EAST_LOAD','FAR_WEST_LOAD',
+                         'NORTH_LOAD','NORTH_CENTRAL_LOAD','SOUTHERN_LOAD',
+                         'SOUTH_CENTRAL_LOAD','WEST_LOAD','TOTAL_LOAD',
+                         'GEN_Biomass','GEN_Coal','GEN_Gas','GEN_Gas.CC',
+                         'GEN_Hydro','GEN_Nuclear','GEN_Other','GEN_Solar','GEN_Wind','GEN_TOTAL')
+corr <-round(cor(corr_df),1)
+
+ggplot(melt(corr), aes(Var1, Var2, fill=value)) +
+  geom_tile(height=0.8, width=0.8) +
+  scale_fill_gradient2(low="blue", mid="white", high="red") +
+  theme_minimal() +
+  coord_equal() +
+  labs(x="",y="",fill="Corr") +
+  theme(axis.text.x=element_text(size=8, angle=45, vjust=1, hjust=1, 
+                                 margin=margin(-3,0,0,0)),
+        axis.text.y=element_text(size=8, margin=margin(0,-3,0,0)),
+        panel.grid.major=element_blank()) 
+
+```
+
+I figured certain Load Zones would be more reliant on  certain generation methods. Surprisingly,the correlation plot really only
+shows strong correlation between Gas/Gas.CC and the load zones. This suggest that TX sources most of its' energy from Gas/Gas.CC.
+Although, FAR_WEST_LOAD is the exception. It seems that there is a strong correlation between GEN_WIND & FAR_WEST_LOAD. From my
+personal experience, I know there is a large population of Wind farms. Therefore, it makes sense that West TX is sourcing their energy from Wind.
+
+```{r,fig.width = 12}
+GEN_TYPE <- df %>% select('DAY','GEN_Coal','GEN_Gas','GEN_Gas.CC',
+                          'GEN_Hydro','GEN_Nuclear','GEN_Other','GEN_Solar','GEN_Wind')
+
+GEN_TYPE <- GEN_TYPE %>% gather("TYPE","MWH",2:9)
+
+GEN_TYPE %>% ggplot(aes(x=DAY,y=MWH,color=TYPE))+geom_line()+xlab("DATE") +
+  ylab("MWH")+ggtitle("Daily MWH Output")+theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.key.size = unit(1.0, 'cm'))
+
+```
+
+```{r,fig.width = 10}
+GEN_TYPE %>% ggplot(aes(x=DAY,y=MWH,color=TYPE))+geom_line()+xlab("DATE") +
+  ylab("MWH")+ggtitle("Daily MWH output")+theme(plot.title = element_text(hjust = 0.5))+
+  facet_wrap(~TYPE,ncol=2)
+
+```
+
+
+
+Above, we have Daily MWH output between 2010-2021. My initial thought is that Coal seems be a huge energy source. In the correlation plot, Coal didn't a strong correlation with any of the Load Zones. Therefore, it's surprising to see how large
+Coal's output is for TX. In contrast, we see that Gas.CC is one of the largest energy sources and that aligned with the 
+output of the correlation plot. 
+
+The spike in output at right side of the graph is very interesting. I'm going to zoom in on that portion of the graph
+to see where this spike occurred. Perhaps the spike occurred during the TX Feb storm? I'll use 4/1/20 as the starting point.
+
+
+Worth noting, that Solar,Hydro & Other don't reflect the output spike. Futher suggesting that these aren't huge energy sources 
+for TX.
+
+
+### Zooming in on the spike!
+
+```{r,fig.width = 12}
+GEN_2020 <- GEN_TYPE %>% filter(DAY >= as.Date("2020-04-01"))
+
+GEN_2020 %>% ggplot(aes(x=DAY,y=MWH,color=TYPE))+geom_line()+xlab("DATE") +
+  ylab("MWH")+ggtitle("Daily MWH output")+theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.key.size = unit(1.0, 'cm'))
+```
+
+Wow! After zooming in on the graph, we see that the spike occurred in Nov/Dec 2020. This raises more ?'s for me. For starters, 
+was this  a historical cold Nov-Dec for TX? Was there a spike in output because transplants from coast states were not used to
+the cold? In other words, did people relocating due to COVID contribute to the spike? Could this spike have foreshadowed the problems that occurred in Feb 2021?
+
+
+# AVG Temp
+
+Let's see if we can notice any large temp movements in Nov/Dec 2020 by exploring Avg Temp's between 2010-2021.
+
+```{r,fig.width = 12}
+AVG_TEMP <- df %>% select('DAY','WEST_TAVG','SOUTH_CENTRAL_TAVG',
+                          'SOUTH_TAVG','NORTH_CENTRAL_TAVG','COAST_TAVG','FAR_WEST_TAVG','EAST_TAVG','NORTH_TAVG')
+
+AVG_TEMP <- AVG_TEMP %>% gather("ZONE","TEMP",2:9)
+##We know that a lot of temp data is missing, using 2014 as Starting Point per previous EDA not shown in this document
+AVG_TEMP <- AVG_TEMP %>% filter(DAY >= as.Date("2014-01-01"))
+AVG_TEMP %>% ggplot(aes(x=DAY,y=TEMP,color=ZONE))+geom_line()+ggtitle("Daily Avg Temp")+xlab("Date")+theme(plot.title = element_text(hjust = 0.5))+  theme(legend.key.size = unit(1.0, 'cm'))
+
+```
+
+
+```{r,fig.width = 10}
+AVG_TEMP %>% ggplot(aes(x=DAY,y=TEMP,color=ZONE))+geom_line()+ggtitle("Daily Avg Temp")+xlab("Date")+theme(plot.title = element_text(hjust = 0.5))+  theme(legend.key.size = unit(1.0, 'cm'))+
+  facet_wrap(~ZONE,ncol=2)
+
+```
+
+Note: Based on previous EDA not shown in this document, I realize a large amount of AVG temp data was missing from our dataset.
+I decided to use 2014 as the starting point.
+
+
+From first glance, we see that AVG temp(regardless of LOAD_ZONE) follows cyclical nature. I don't notice anything odd
+for Nov/Dec 2020. Perhaps if we zoom in on that time period, we will notice anything unusual.
+
+With breaking out the Daily Avg Temp by Load_zone, the only interesting discovery is that we don't have any daily avg temp
+EAST_LOAD zone. This potentially may cause issues when modeling demand down the line.
+
+```{r,fig.width = 12}
+AVG_TEMP <- AVG_TEMP %>% filter(DAY >= as.Date("2020-04-01"))
+AVG_TEMP %>% ggplot(aes(x=DAY,y=TEMP,color=ZONE))+geom_line()+ggtitle("Daily Avg Temp")+xlab("Date")+theme(plot.title = element_text(hjust = 0.5))+  theme(legend.key.size = unit(1.0, 'cm'))
+```
+
+```{r,fig.width = 10}
+AVG_TEMP <- AVG_TEMP %>% filter(DAY >= as.Date("2020-04-01"))
+AVG_TEMP %>% ggplot(aes(x=DAY,y=TEMP,color=ZONE))+geom_line()+ggtitle("Daily Avg Temp")+xlab("Date")+theme(plot.title = element_text(hjust = 0.5))+  theme(legend.key.size = unit(1.0, 'cm'))+
+  facet_wrap(~ZONE,ncol=2)
+```
+
+
+After zooming in on Daily AVG Temp, there doesn't appear to be anything unique about NOV/DEC 2020. Although,we
+see the huge dip in Daily AVG temp in Feb 2021 due to the winter storm.  
+
+Although there is nothing noticeable different for NOV/DEC 2020, my intuition tells me that this is due
+the transplants from coast states experiencing difficulty adjusting to the cold. Therefore, we need to research
+inflow of transplants into TX for 2020. Futhermore, the energy output spike for NOV/DEC 2020 needs to be explored in
+greater detail.
+
+
+# Relationship of AVG TEMP vs LOAD generation
+
+
+In this section of the EDA, I wanted to explore the relationship between AVG Temp & Load generation.
+In order to scale the data and have a clean view of the shape, I took the Log of the AVG temp & Load generation 
+respectively. 
+
+```{r,fig.width = 12}
+WEST_DF <- df %>% select('DAY','WEST_TAVG','WEST_LOAD')
+WEST_DF <- WEST_DF %>% filter(DAY >= as.Date("2013-04-01"))
+WEST_DF$LOG_LOAD <- log(WEST_DF$WEST_LOAD)
+WEST_DF$LOG_TEMP <- log(WEST_DF$WEST_TAVG)
+WEST_DF <- WEST_DF %>% select('DAY','LOG_LOAD','LOG_TEMP')
+WEST_DF <- WEST_DF %>% gather("TYPE","VALUE",2:3)
+WEST_DF %>% ggplot(aes(x=DAY,y=VALUE,color=TYPE))+geom_line()+xlab("Performance Date")+ylab("Value")+ggtitle("LOG AVG Temp vs Daily load for WEST_LOAD")+theme_light() +theme(plot.title = element_text(hjust = 0.5))+  theme(legend.key.size = unit(1.0, 'cm'))
+```
+
+
+```{r,fig.width = 12}
+SOUTH_CENTRAL_DF <- df %>% select('DAY','SOUTH_CENTRAL_TAVG','SOUTH_CENTRAL_LOAD')
+SOUTH_CENTRAL_DF <- SOUTH_CENTRAL_DF %>% filter(DAY >= as.Date("2013-04-01"))
+SOUTH_CENTRAL_DF$LOG_LOAD <- log(SOUTH_CENTRAL_DF$SOUTH_CENTRAL_LOAD)
+SOUTH_CENTRAL_DF$LOG_TEMP <- log(SOUTH_CENTRAL_DF$SOUTH_CENTRAL_TAVG)
+SOUTH_CENTRAL_DF <- SOUTH_CENTRAL_DF %>% select('DAY','LOG_LOAD','LOG_TEMP')
+SOUTH_CENTRAL_DF <- SOUTH_CENTRAL_DF %>% gather("TYPE","VALUE",2:3)
+SOUTH_CENTRAL_DF %>% ggplot(aes(x=DAY,y=VALUE,color=TYPE))+geom_line()+xlab("Performance Date")+ylab("Value")+ggtitle("LOG AVG Temp vs Daily load for SOUTHERN_CENTRAL")+theme_light()+
+theme(plot.title = element_text(hjust = 0.5))+  theme(legend.key.size = unit(1.0, 'cm'))
+
+```
+
+```{r,fig.width = 12}
+NORTH_CENTRAL_DF <- df %>% select('DAY','NORTH_CENTRAL_LOAD','NORTH_CENTRAL_TAVG')
+NORTH_CENTRAL_DF <- NORTH_CENTRAL_DF %>% filter(DAY >= as.Date("2013-04-01"))
+NORTH_CENTRAL_DF$LOG_LOAD <- log(NORTH_CENTRAL_DF$NORTH_CENTRAL_LOAD)
+NORTH_CENTRAL_DF$LOG_TEMP <- log(NORTH_CENTRAL_DF$NORTH_CENTRAL_TAVG)
+NORTH_CENTRAL_DF <- NORTH_CENTRAL_DF %>% select('DAY','LOG_LOAD','LOG_TEMP')
+NORTH_CENTRAL_DF <- NORTH_CENTRAL_DF %>% gather("TYPE","VALUE",2:3)
+NORTH_CENTRAL_DF %>% ggplot(aes(x=DAY,y=VALUE,color=TYPE))+geom_line()+xlab("Performance Date")+ylab("Value")+ggtitle("LOG AVG Temp vs Daily load for NORTH_CENTRAL_LOAD")+theme_light()+
+theme(plot.title = element_text(hjust = 0.5))+  theme(legend.key.size = unit(1.0, 'cm'))
+```
+
+
+After spot checking a few of the LOAD ZONE's log transformation output and their Avg temp , we see that the both
+variables seem to mirror each other. The exception is that when large temp decreases occur, we see spikes in energy output. This makes sense since when people are cold, they are going to want to use their heating more.
+
+Later on the data will be encoded to check all of the Load zones effortlessly. But for now , this check will do.
+
+
+
+# Total Load vs Gen
+
+
+```{r,fig.width = 12}
+Total_GEN <- df %>% select('DAY','TOTAL_LOAD','GEN_TOTAL')
+Total_GEN <- Total_GEN %>% gather("TYPE","MWH",2:3)
+Total_GEN %>% ggplot(aes(x=DAY,y=MWH,color=TYPE))+geom_line()+ggtitle("Total Load vs Gen Total")+theme(plot.title = element_text(hjust = 0.5))+  theme(legend.key.size = unit(1.0, 'cm'))
+```
+
+```{r,fig.width = 12}
+Total_GEN <- df %>% select('DAY','TOTAL_LOAD','GEN_TOTAL')
+Total_GEN <- Total_GEN %>% filter(DAY >= as.Date("2020-04-01"))
+Total_GEN <- Total_GEN %>% gather("TYPE","MWH",2:3)
+Total_GEN %>% ggplot(aes(x=DAY,y=MWH,color=TYPE))+geom_line()+ggtitle("Total Load vs Gen Total")+theme(plot.title = element_text(hjust = 0.5))+  theme(legend.key.size = unit(1.0, 'cm'))
+```
+
+
+From our previous plots, we see the same occurrences happen again in NOV/DEC 2020.  Again this is very interesting QOI and will require further analysis.  
+
+
+## Checking NA Values
+```{r}
+#Checking for Missing Values
+sapply(df, function(x) sum(is.na(x)))
+```
+Wow, we have a lot of missing values. Given the similar counts, perhaps we are just missing a few of years' worth of data.
+Therefore, we may only have complete records for only the last 5 years or so. Further investigation is required to determine
+the cut off point for the date.
